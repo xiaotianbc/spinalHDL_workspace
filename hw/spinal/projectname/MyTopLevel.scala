@@ -24,7 +24,3 @@ case class MyTopLevel() extends Component {
 object MyTopLevelVerilog extends App {
   Config.spinal.generateVerilog(MyTopLevel())
 }
-
-object MyTopLevelVhdl extends App {
-  Config.spinal.generateVhdl(MyTopLevel())
-}
