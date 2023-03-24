@@ -132,29 +132,31 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
   )
   val init_cmds_idx_2 = RegInit(U(3))
 
-  val set_window_flag = RegInit(True)
-
   val set_window_cmds = Cat(
     // lcddev.setxcmd = 0x2A
     // lcddev.setycmd = 0x2B
     // lcddev.wramcmd = 0x2C
-
     /*
-     * LCD_WR_REG(lcddev.setxcmd)
-	LCD_WR_DATA(xStar >> 8)
-	LCD_WR_DATA(0x00FF & xStar)
-	LCD_WR_DATA(xEnd >> 8)      //240
-	LCD_WR_DATA(0x00FF & xEnd)
-	LCD_WR_REG(lcddev.setycmd)
-	LCD_WR_DATA(yStar >> 8)
-	LCD_WR_DATA(0x00FF & yStar)
-	LCD_WR_DATA(yEnd >> 8)      //320
-	LCD_WR_DATA(0x00FF & yEnd)
 	LCD_WriteRAM_Prepare//开始写入GRAM
      * */
 
+    B"9'h02A", // setxcmd
+    B"9'h100", // xStar:0
+    B"9'h100", // 0
+    B"9'h100", // xEnd: 240 >> 8
+    B"9'h1f0", // 240 & 0xff
+
+    B"9'h02B", // setycmd
+    B"9'h100", // yStar:0
+    B"9'h100", // 0
+    B"9'h101", // yEnd: 320 >> 8
+    B"9'h140", // 320 & 0xff
+
+    B"9'h02C" // LCD_WriteRAM_Prepare//开始写入GRAM
   )
-  val set_window_cmds_index = RegInit(U(3))
+  val set_window_cmds_index = RegInit(U(11))
+
+  val pixel_cnt = Counter(240 * 320)
 
   val counter = Counter(reset_cnt * 4)
   object State extends SpinalEnum {
@@ -164,7 +166,7 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
 
   val spi_dr = Reg(Bits(16 bits)) init 0
   val bits_to_cnt = RegInit(U(15))
-  val spi_clk_div_cnt = Counter(10)
+  val spi_clk_div_cnt = Counter(2)
   switch(state) {
     is(State.start_up) {
       counter.increment()
@@ -214,7 +216,7 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
         io.screen_sck := False
         io.screen_mosi := spi_dr(bits_to_cnt)
       }
-      when(spi_clk_div_cnt.value === 5) {
+      when(spi_clk_div_cnt.value === 1) {
         io.screen_sck := True
         bits_to_cnt := bits_to_cnt - 1
         when(bits_to_cnt === 0) {
@@ -223,7 +225,7 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
       }
     }
     is(State.check_finished) {
-      // io.screen_cs:=True
+      io.screen_cs := True
       when(init_cmds_idx_1 > 0) {
         state := State.init_cmds_1
       } elsewhen (init_cmds_idx_2 === 3) {
@@ -234,10 +236,39 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
         state := State.send_pixel
       }
     }
-    is(State.send_pixel) {}
+    is(State.send_pixel) {
+      when(set_window_cmds_index > 0) {
+        io.screen_dc := set_window_cmds((set_window_cmds_index * 9 - 1).resized) // MSB为命令/数据
+        io.screen_cs := False
+        spi_dr := B"00000000" ## set_window_cmds((set_window_cmds_index - 1) * 9, 8 bits)
+        set_window_cmds_index := set_window_cmds_index - 1
+        state := State.send_bits
+        bits_to_cnt := 7
+        spi_clk_div_cnt.clear()
+      } otherwise {
+        pixel_cnt.increment()
+        io.screen_dc := True // MSB为命令/数据
+        io.screen_cs := False
 
+        when(pixel_cnt < 240 * 80) {
+          spi_dr := B(0xffe0)
+        } elsewhen (pixel_cnt < 240 * 160) {
+          spi_dr := B(0xf800)
+        } elsewhen (pixel_cnt < 240 * 240) {
+          spi_dr := B(0x001f)
+        } otherwise {
+          spi_dr := B(0x7fff)
+        }
+
+        state := State.send_bits
+        bits_to_cnt := 15
+        spi_clk_div_cnt.clear()
+        when(pixel_cnt.willOverflow) {
+          set_window_cmds_index := 11
+        }
+      }
+    }
   }
-
 }
 
 object screen_ili9341 extends App {
