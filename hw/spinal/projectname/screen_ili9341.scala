@@ -1,6 +1,7 @@
 package projectname
 
 import spinal.core._
+import spinal.core.sim._
 import spinal.lib._
 
 import scala.language.postfixOps
@@ -131,39 +132,35 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
   )
   val init_cmds_idx_2 = RegInit(U(3))
 
-
-  val set_window_flag=RegInit(True)
+  val set_window_flag = RegInit(True)
 
   val set_window_cmds = Cat(
-    //lcddev.setxcmd = 0x2A
-    //lcddev.setycmd = 0x2B
-    //lcddev.wramcmd = 0x2C
+    // lcddev.setxcmd = 0x2A
+    // lcddev.setycmd = 0x2B
+    // lcddev.wramcmd = 0x2C
 
     /*
-    * LCD_WR_REG(lcddev.setxcmd)
+     * LCD_WR_REG(lcddev.setxcmd)
 	LCD_WR_DATA(xStar >> 8)
 	LCD_WR_DATA(0x00FF & xStar)
-	LCD_WR_DATA(xEnd >> 8)
+	LCD_WR_DATA(xEnd >> 8)      //240
 	LCD_WR_DATA(0x00FF & xEnd)
 	LCD_WR_REG(lcddev.setycmd)
 	LCD_WR_DATA(yStar >> 8)
 	LCD_WR_DATA(0x00FF & yStar)
-	LCD_WR_DATA(yEnd >> 8)
+	LCD_WR_DATA(yEnd >> 8)      //320
 	LCD_WR_DATA(0x00FF & yEnd)
 	LCD_WriteRAM_Prepare//开始写入GRAM
-    * */
-
+     * */
 
   )
   val set_window_cmds_index = RegInit(U(3))
-
 
   val counter = Counter(reset_cnt * 4)
   object State extends SpinalEnum {
     val start_up, init_cmds_1, delay_2, init_cmds_2, send_bits, check_finished, send_pixel = newElement()
   }
   val state = RegInit(State.start_up)
-
 
   val spi_dr = Reg(Bits(16 bits)) init 0
   val bits_to_cnt = RegInit(U(15))
@@ -192,9 +189,9 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
     }
 
     is(State.init_cmds_1) {
-      io.screen_dc := setup_cmds_1((init_cmds_idx_1 - 1) * 9 + 8) // MSB为命令/数据
-      io.screen_cs := 0
-      spi_dr := setup_cmds_1((init_cmds_idx_1 - 1) * 9, 8 bits)
+      io.screen_dc := setup_cmds_1((init_cmds_idx_1 * 9 - 1).resized) // MSB为命令/数据
+      io.screen_cs := False
+      spi_dr := B"00000000" ## setup_cmds_1((init_cmds_idx_1 - 1) * 9, 8 bits)
       init_cmds_idx_1 := init_cmds_idx_1 - 1
       state := State.send_bits
       bits_to_cnt := 7
@@ -202,9 +199,9 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
     }
 
     is(State.init_cmds_2) {
-      io.screen_dc := setup_cmds_2((init_cmds_idx_2 - 1) * 9 + 8) // MSB为命令/数据
-      io.screen_cs := 0
-      spi_dr := setup_cmds_2((init_cmds_idx_2 - 1) * 9, 8 bits)
+      io.screen_dc := setup_cmds_2((init_cmds_idx_2 * 9 - 1).resized) // MSB为命令/数据
+      io.screen_cs := False
+      spi_dr := B"00000000" ## setup_cmds_2((init_cmds_idx_2 - 1) * 9, 8 bits)
       init_cmds_idx_2 := init_cmds_idx_2 - 1
       state := State.send_bits
       bits_to_cnt := 7
@@ -237,10 +234,28 @@ case class screen_ili9341(reset_cnt: Int = 10000000) extends Component {
         state := State.send_pixel
       }
     }
-    is(State.send_pixel) {
-
-    }
+    is(State.send_pixel) {}
 
   }
 
+}
+
+object screen_ili9341 extends App {
+  Config.spinal.generateVerilog(new screen_ili9341())
+}
+object screen_ili9341Sim extends App {
+  Config.sim.compile(new screen_ili9341(reset_cnt = 100)).doSim { dut =>
+    // Fork a process to generate the reset and the clock on the dut
+    dut.clockDomain.forkStimulus(period = 10)
+
+    for (idx <- 0 to 9999) {
+      // Drive the dut inputs with random values
+      //      dut.io.cond0.randomize()
+      //      dut.io.cond1.randomize()
+
+      // Wait a rising edge on the clock
+      dut.clockDomain.waitRisingEdge()
+
+    }
+  }
 }
