@@ -4,22 +4,17 @@ import spinal.core._
 import spinal.lib._
 class RiseCounter extends Component {
   val io = new Bundle {
-    val sigIn = in Bool()
-    val clear = in Bool()
-    val cnt = out UInt (32 bits)
+    val led= out(Reg(UInt(4 bits)) init U"1111")
   }
-  val counter = new Area {
-    val cnt = Counter(32 bits, io.sigIn.rise(False))
-    when(io.clear) {
-      cnt.value.clearAll()
-    }
-    io.cnt := cnt.value
+  noIoPrefix()
+  val cnt=Counter(50000000)
+  cnt.increment()
+  when(cnt.willOverflow){
+    io.led:=io.led-1
   }
 }
 
 //Generate the RiseCounter's Verilog
-object RiseCounterVerilog {
-  def main(args: Array[String]) {
-    SpinalVerilog(new RiseCounter)
-  }
+object RiseCounterVerilog extends App {
+  Config.spinal.generateVerilog(new RiseCounter())
 }

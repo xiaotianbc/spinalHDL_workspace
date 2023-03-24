@@ -7,27 +7,19 @@ import spinal.core.sim._
 import scala.io.Source
 import scala.language.postfixOps
 import scala.util.Random
-class screen(reset_delay: Int = 2700000) extends Component {
+class screen(reset_delay: Int = 10000000) extends Component {
   val io = new Bundle {
     val screen_sck = out(RegInit(False))
     val screen_mosi = out(RegInit(False))
     val screen_rstn = out(RegInit(False))
     val screen_dc = out(RegInit(False))
     val screen_cs = out(RegInit(True))
+    val pixel_addr = out(Reg(UInt(log2Up(1024) bits)) init 0)
+    val pixel_data = in(Bits(8 bits))
   }
   noIoPrefix()
 
-  val fileContent_handle = Source.fromFile("output.hex").getLines().map(BigInt(_, 16)).toArray
-  def file_content = for (sampleIndex <- 0 until 1024) yield {
-    B(fileContent_handle(sampleIndex))
-  }
-  // 下面代码等价于 reg [7:0] mem [4:0];initial $readmemh("output.hex",mem);
-  // val fileContents = Source.fromFile("output.hex").getLines().map(BigInt(_, 16)).toSeq
-  val image_rom = Mem(Bits(8 bits), initialContent = file_content)
-  val image_index = Reg(UInt(log2Up(1024) bits)) init 0
-
-
-
+  //val image_index = Reg(UInt(log2Up(1024) bits)) init 0
 
   val setup_cmds = Cat(
     B"8'hAE", // display off
@@ -60,7 +52,7 @@ class screen(reset_delay: Int = 2700000) extends Component {
 
   val spi_dr = Reg(Bits(8 bits)) init 0
   val bits_to_send = RegInit(U(7))
-  val spi_div_cnt = Counter(4)
+  val spi_div_cnt = Counter(10)
   object State extends SpinalEnum {
     val init_reset, load_cmds_init, send_data, check_finished, send_pixel = newElement()
   }
@@ -96,7 +88,7 @@ class screen(reset_delay: Int = 2700000) extends Component {
         io.screen_sck := False
         io.screen_mosi := spi_dr(bits_to_send)
       }
-      when(spi_div_cnt.value === 2) {
+      when(spi_div_cnt.value === 5) {
         io.screen_sck := True
         bits_to_send := bits_to_send - 1
         when(bits_to_send === 0) {
@@ -113,8 +105,8 @@ class screen(reset_delay: Int = 2700000) extends Component {
       }
     }
     is(State.send_pixel) {
-      spi_dr := image_rom(image_index)
-      image_index := image_index + 1
+      spi_dr := io.pixel_data
+      io.pixel_addr := io.pixel_addr + 1
       state := State.send_data
       io.screen_cs := False
       io.screen_dc := True // DC=0 命令

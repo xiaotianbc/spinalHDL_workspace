@@ -7,12 +7,14 @@ import spinal.core.sim._
 import scala.io.Source
 import scala.language.postfixOps
 import scala.util.Random
-class uart_rx(sys_freq: Int = 27000000, baudrate: Int = 1000000) extends Component {
+class uart_rx(sys_freq: Int = 100000000, baudrate: Int = 1000000) extends Component {
   val io = new Bundle {
     val rxp = in(Bool())
     val dout = out(Reg(Bits(8 bits)) init 0)
     val d_valid = out(RegInit(False))
   }
+  noIoPrefix()
+
   val BAUD_MAX = sys_freq / baudrate
   val baud_cnt = Counter(BAUD_MAX)
   val rx_index = Reg(UInt(log2Up(8) bits)) init 0
